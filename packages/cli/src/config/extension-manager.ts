@@ -725,23 +725,34 @@ Would you like to attempt to install via "git clone" instead?`,
     let effectiveExtensionPath = extensionDir;
     if ((this.settings.security?.allowedExtensions?.length ?? 0) > 0) {
       if (!installMetadata?.source) {
-        throw new Error(
+        debugLogger.warn(
           `Failed to load extension ${extensionDir}. The ${INSTALL_METADATA_FILENAME} file is missing or misconfigured.`,
         );
+        return null;
       }
-      const extensionAllowed = this.settings.security?.allowedExtensions.some(
-        (pattern) => {
-          try {
-            return new RegExp(pattern).test(
-              getRealPath(installMetadata?.source ?? ''),
-            );
-          } catch (e) {
-            throw new Error(
-              `Invalid regex pattern in allowedExtensions setting: "${pattern}. Error: ${getErrorMessage(e)}`,
-            );
-          }
-        },
-      );
+      let extensionAllowed: boolean | undefined;
+      try {
+        extensionAllowed = this.settings.security?.allowedExtensions.some(
+          (pattern) => {
+            try {
+              return new RegExp(pattern).test(
+                getRealPath(installMetadata?.source ?? ''),
+              );
+            } catch (e) {
+              throw new Error(
+                `Invalid regex pattern in allowedExtensions setting: "${pattern}. Error: ${getErrorMessage(e)}`,
+              );
+            }
+          },
+        );
+      } catch (e) {
+        // Skip only this extension. Letting the error escape would reject the
+        // Promise.all in loadExtensions and make every extension unavailable.
+        debugLogger.warn(
+          `Failed to load extension ${extensionDir}. ${getErrorMessage(e)}`,
+        );
+        return null;
+      }
       if (!extensionAllowed) {
         debugLogger.warn(
           `Failed to load extension ${extensionDir}. This extension is not allowed by the "allowedExtensions" security setting.`,
